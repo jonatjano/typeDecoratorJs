@@ -1,4 +1,4 @@
-class mTypeError extends Error {
+class TypeError extends Error {
     constructor(message) {
         super(message);
     }
@@ -12,7 +12,7 @@ class Type {
     static #undefined = new Type(() => true, "undefined", undefined)
     static get undefined() { return Type.#undefined }
 
-    static #known = new Map<any, Type>([
+    static #known = new Map([
         [null, Type.null],
         [undefined, Type.undefined],
         [Number, new Type(value => typeof value === "number", "number", 0)],
@@ -27,11 +27,17 @@ class Type {
         ]
     ])
 
-    #validationFunction: (any) => boolean
+    /**
+     * * => boolean
+     */
+    #validationFunction
+    /**
+     * @type {string}
+     */
     #name
     #minimalValue
 
-    constructor(validationFunction: (any) => boolean = () => false, name = "", minimalValue = undefined) {
+    constructor(validationFunction = () => false, name = "", minimalValue = undefined) {
         this.#validationFunction = validationFunction
         this.#name = name
         this.#minimalValue = minimalValue
@@ -428,7 +434,7 @@ function recordOf(shape) {
 function _null(typeHint) {
     return Nullable.getFor(typeHint)
 }
-
+/*
 const myType = type({a: 42, b: _null(666)})
 const obj = myType.editValue({})
 
@@ -442,7 +448,7 @@ arr[0] = {a: 42}
 arr[2] = {a: 42}
 arr[3] = {a: 42}
 arr[1] = {a: 42}
-
+*/
 /*
 function myLog(string) {
     console.log(string, eval(string))
@@ -470,61 +476,45 @@ myLog("type() instanceof Type")
 */
 
 
-function typed(...typeHints: any) {
+function typed(...typeHints) {
     const ty = type(...typeHints)
 
-    return function (
-        target: any,
-        propertyKey: string,
-        descriptor: PropertyDescriptor
-    ) {
-        const value = target[propertyKey]
-        if (value === undefined) {
-            target[propertyKey] = ty.initialize()
-        } else if (! ty.isValid(value)) {
-            throw new TypeError(`${value} is not valid for type ${ty.toString()}`)
-        }
-
-        if (descriptor !== undefined) {
-            const oldSet = descriptor.set
-            descriptor.set = function set(value) {
-                if (ty.isValid(value)) {
-                    return oldSet.call(this, ty.editValue(value))
-                } else {
-                    console.error(`invalid value`, value, `of type ${typeof value}, expected ${ty.toString()}`)
+    return function (value, context) {
+        if (context.kind === "accessor") {
+            return {
+                set(val) {
+                    if (ty.isValid(val)) {
+                        return value.set.call(this, ty.editValue(val))
+                    } else {
+                        console.error(`invalid value`, value, `of type ${typeof value}, expected ${ty.toString()}`)
+                    }
+                },
+                init(val) {
+                    if (val === undefined) {
+                        return ty.initialize()
+                    } else if (ty.isValid(val)) {
+                        return val
+                    }
+                    throw new TypeError(`Cannot initialize ${this}[${context.name}] to ${val}, expected type ${ty.toString()} got ${typeof val}`)
                 }
             }
+        } else {
+            throw new SyntaxError(`kind "${context.kind}" is not supported by @typed decorator`)
         }
     }
 }
 
-const stringOrNumber = type(String, Number)
-const myType2 = type([Number, stringOrNumber])
-console.log("myType : ", myType2.toString())
-
 class A {
-    static b
     @typed(Number)
-    static set a(value: any) {
-        this.b = value
-    }
-    static get a(): any {
-        return this.b
-    }
+    static accessor a = 42
 
-    static d
     @typed([Number, arrayOf(String), _null(Number)])
-    static set c(value: any) {
-        this.d = value
-    }
-    static get c(): any {
-        return this.d
-    }
+    static accessor b
 }
 
 console.log(A)
-A.a = 42
-A.c[1][2] = "42"
-A.c[2] = "42"
-console.log(A)
+// A.a = 42
+// A.b[1][2] = "42"
+// A.b[2] = "42"
+console.log(A.a, A.b)
 

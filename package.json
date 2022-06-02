@@ -4,13 +4,16 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "npx tsc -t esnext --experimentalDecorators src/index.ts && node src/index.js"
+    "start": "npm run build && node lib/index.js",
+    "build": "babel src -d lib"
   },
   "author": "",
   "license": "ISC",
   "keywords": [],
   "description": "",
-  "dependencies": {
-    "typescript": "^4.7.2"
+  "devDependencies": {
+    "@babel/cli": "^7.17.10",
+    "@babel/core": "^7.18.2",
+    "@babel/plugin-proposal-decorators": "^7.18.2"
   }
 }
