@@ -485,22 +485,26 @@ class TypedFunction extends Type {
         }
     }
 
-    editValue(value, thisArgs, ...args) {
-        let possibleOverloads = this.#overloads
-        for (let i = 0; i < args.length; i++) {
-            const newOverloads = possibleOverloads.filter(overload => overload.params[i].isValid(args[i]))
-            if (newOverloads.length === 0) {
-                // todo make error message more useful with some context
-                throw new TypeError(`invalid value ${args[i]} of type ${typeof args[i]}, expected ${possibleOverloads.map(overload => overload.params[i]).join(" or ")}`)
+    // todo edit to take only value
+    editValue(value) {
+        const overloads = this.#overloads
+        return function(...args) {
+            let possibleOverloads = overloads
+            for (let i = 0; i < args.length; i++) {
+                const newOverloads = possibleOverloads.filter(overload => overload.params[i].isValid(args[i]))
+                if (newOverloads.length === 0) {
+                    // todo make error message more useful with some context
+                    throw new TypeError(`invalid value ${args[i]} of type ${typeof args[i]}, expected ${possibleOverloads.map(overload => overload.params[i]).join(" or ")}`)
+                }
+                possibleOverloads = newOverloads
             }
-            possibleOverloads = newOverloads
+            const returnValue = value.call(this, ...args)
+            if (! possibleOverloads.some(overload => overload.return.isValid(returnValue))) {
+                // todo make error message more useful with some context
+                throw new TypeError(`invalid return value ${returnValue} of type ${typeof returnValue}, expected ${possibleOverloads.map(overload => overload.return).join(" or ")}`)
+            }
+            return returnValue
         }
-        const returnValue = value.call(thisArgs, ...args)
-        if (! possibleOverloads.some(overload => overload.return.isValid(returnValue))) {
-            // todo make error message more useful with some context
-            throw new TypeError(`invalid return value ${returnValue} of type ${typeof returnValue}, expected ${possibleOverloads.map(overload => overload.return).join(" or ")}`)
-        }
-        return returnValue
     }
 
     // todo use the other once OneOf.initialize is implemented
@@ -609,9 +613,7 @@ function typed(...typeHints) {
             }
         } else if (context.kind === "method") {
             const ty = func(...typeHints)
-            return function(...args) {
-                return ty.editValue(value, this, ...args)
-            }
+            return ty.editValue(value)
         } else {
             throw new SyntaxError(`kind "${context.kind}" is not supported by @typed decorator`)
         }
