@@ -67,7 +67,7 @@ class Type {
         return this.#name
     }
 
-    static getFor(typeHint = null) {
+    static getFor(typeHint) {
         if (typeHint instanceof Type) {
             return typeHint
         } else if (Type.#known.has(typeHint)) {
@@ -84,6 +84,24 @@ class Type {
             {}.prototype === undefined
             typeof (() => {}) === function
              */
+            /*
+            function test(val) {
+                return {
+                    "instanceof Function": val instanceof Function,
+                    "prototype": val.prototype,
+                    "val": val,
+                    "arguments !== undefined": val.arguments !== undefined,
+                    "prototype === undefined": val.prototype === undefined
+                }
+            }
+
+            console.table({
+                "class A {}": test(class A {}),
+                "function() {}": test(function() {}),
+                "() => {}": test(() => {}),
+                "Number": test(Number)
+            })
+             */
         } else {
             return Primitive.getFor(typeHint)
         }
@@ -91,11 +109,11 @@ class Type {
 }
 
 class Primitive extends Type {
+    static #known = new Map()
     #value
 
     constructor(value) {
         super()
-        console.log("primitive", value)
         this.#value = value
     }
 
@@ -112,10 +130,15 @@ class Primitive extends Type {
     }
 
     static getFor(value) {
-        return new Primitive(value)
+        if (! Primitive.#known.has(value)) {
+            Primitive.#known.set(value, new Primitive(value))
+        }
+        return Primitive.#known.get(value)
     }
 }
 
+// TODO rewrite using a static WeakMap to store metadata
+//      that way, OneOf instance could be reusable
 class OneOf extends Type {
     #subTypes = []
     #possibleTypes = []
@@ -134,6 +157,7 @@ class OneOf extends Type {
         return this.#possibleTypes.find(t => t.isValidAt(index, value))
     }
 
+    // todo return oneOf(...)
     subtypeAt(index) {
         return this.#possibleTypes[0].subtypeAt(index)
     }
@@ -143,7 +167,6 @@ class OneOf extends Type {
     }
 
     editValue(value) {
-        console.log("edit value to", value)
         if (typeof value !== "object") {
             return value
         }
@@ -183,7 +206,7 @@ class OneOf extends Type {
     }
 
     toString() {
-        return `${this.#subTypes.map(t => t.toString()).join(" | ")} (reduced to ${this.#possibleTypes.map(t => t.toString()).join(" | ")})`
+        return this.#subTypes.map(t => t.toString()).join(" | ")
     }
 
     static getFor(...types) {
@@ -372,6 +395,8 @@ class RecordOf extends Type {
     }
 }
 
+// TODO rewrite using a static WeakMap for metadata to make instances reusable
+//      move isNull as part of WeakMap data
 class Nullable extends Type {
     #type = Type.null
     #isNull = false
@@ -411,6 +436,88 @@ class Nullable extends Type {
     }
 }
 
+class TypedFunction extends Type {
+    // #overloads = [
+    //     {params: [type(Number), type(Number)], return: type(Number)},
+    //     {params: [type(String, Number), type(String, Number)], return: type(String)}
+    // ]
+    #overloads
+
+    constructor(...typeHints) {
+        super()
+
+        this.#overloads = typeHints.reduce((acc, hint, index) => {
+            const currentOverload = acc.at(-1)
+            if (typeof hint === "function" && hint.prototype === undefined) {
+                currentOverload.return = type(hint())
+                if (index !== typeHints.length - 1) {
+                    acc.push({params: [], return: Type.null})
+                }
+            } else {
+                currentOverload.params.push(type(hint))
+            }
+            return acc
+        }, [{params: [], return: Type.null}])
+    }
+
+    isValid(value) {
+        return typeof value === "function"
+    }
+
+    isValidAt(index, value) {
+        if (index === "return") {
+            return this.#overloads.some(overload => overload.return.isValid(value))
+        }
+        return this.#overloads.some(overload => overload.params[index]?.isValid(value))
+    }
+
+    subtypeAt(index) {
+        if (this.#overloads.length === 1) {
+            if (index === "return") {
+                return this.#overloads[0].return
+            }
+            return this.#overloads[0].params[index]
+        } else {
+            if (index === "return") {
+                return oneOf(...this.#overloads.map(overload => overload.return))
+            }
+            return oneOf(...this.#overloads.map(overload => overload.params[index]))
+        }
+    }
+
+    editValue(value, thisArgs, ...args) {
+        let possibleOverloads = this.#overloads
+        for (let i = 0; i < args.length; i++) {
+            const newOverloads = possibleOverloads.filter(overload => overload.params[i].isValid(args[i]))
+            if (newOverloads.length === 0) {
+                // todo make error message more useful with some context
+                throw new TypeError(`invalid value ${args[i]} of type ${typeof args[i]}, expected ${possibleOverloads.map(overload => overload.params[i]).join(" or ")}`)
+            }
+            possibleOverloads = newOverloads
+        }
+        const returnValue = value.call(thisArgs, ...args)
+        if (! possibleOverloads.some(overload => overload.return.isValid(returnValue))) {
+            // todo make error message more useful with some context
+            throw new TypeError(`invalid return value ${returnValue} of type ${typeof returnValue}, expected ${possibleOverloads.map(overload => overload.return).join(" or ")}`)
+        }
+        return returnValue
+    }
+
+    // todo use the other once OneOf.initialize is implemented
+    initialize() {
+        return () => this.#overloads[0].return.initialize()
+        // return this.subtypeAt("return").initialize();
+    }
+
+    toString() {
+        return this.#overloads.map(overload => `(${overload.params.map(param => param.toString()).join(", ")}) => ${overload.return.toString()}`).join(" | ")
+    }
+
+    static getFor(...typeHints) {
+        return new TypedFunction(...typeHints)
+    }
+}
+
 function type(...typeHints) {
     if (typeHints.length === 0) {
         typeHints = [null]
@@ -433,6 +540,9 @@ function recordOf(shape) {
 }
 function _null(typeHint) {
     return Nullable.getFor(typeHint)
+}
+function func(...typeHints) {
+    return TypedFunction.getFor(...typeHints)
 }
 /*
 const myType = type({a: 42, b: _null(666)})
@@ -477,10 +587,9 @@ myLog("type() instanceof Type")
 
 
 function typed(...typeHints) {
-    const ty = type(...typeHints)
-
     return function (value, context) {
         if (context.kind === "accessor") {
+            const ty = type(...typeHints)
             return {
                 set(val) {
                     if (ty.isValid(val)) {
@@ -498,6 +607,11 @@ function typed(...typeHints) {
                     throw new TypeError(`Cannot initialize ${this}[${context.name}] to ${val}, expected type ${ty.toString()} got ${typeof val}`)
                 }
             }
+        } else if (context.kind === "method") {
+            const ty = func(...typeHints)
+            return function(...args) {
+                return ty.editValue(value, this, ...args)
+            }
         } else {
             throw new SyntaxError(`kind "${context.kind}" is not supported by @typed decorator`)
         }
@@ -510,11 +624,27 @@ class A {
 
     @typed([Number, arrayOf(String), _null(Number)])
     static accessor b
+
+    @typed(
+        Number, Number, _=> Number,
+        String, String, _=> String
+    )
+    static add(a, b) {
+        return a + b
+    }
+
+    @typed(Number, Number, _=> Number)
+    static sub(a, b) {
+        return this.add(a, -b)
+    }
 }
 
-console.log(A)
+console.log(A.add("1", "2"))
+console.log(A.sub(1, 2))
+console.log(A.sub.call({add(a, b) {return 42}}, 1, 2))
+// console.log(A)
 // A.a = 42
 // A.b[1][2] = "42"
 // A.b[2] = "42"
-console.log(A.a, A.b)
+// console.log(A.a, A.b)
 
