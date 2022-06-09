@@ -4,8 +4,47 @@ class TypeError extends Error {
     }
 }
 
+class ComparableSet extends Set {
+    equals(otherSet) {
+        if (otherSet === this) {
+            return true
+        }
+        if ( ! (otherSet instanceof Set) ) {
+            return false
+        }
+        if ([...this.values()].length !== [...otherSet.values()].length) {
+            return false
+        }
+        for (const val of this.values()) {
+            if (! otherSet.has(val)) {
+                return false
+            }
+        }
+        return true
+    }
+}
+
+function deepEqual(obj1, obj2) {
+    if (obj1 === obj2) {
+        return true
+    }
+    if (typeof obj1 !== typeof obj2) {
+        return false
+    }
+    if (typeof obj1 === "object") {
+        if (Object.entries(obj1).length !== Object.entries(obj2).length) {
+            return false
+        }
+        for (const key of Object.keys(obj1)) {
+            if (! deepEqual(obj1[key], obj2[key])) {
+                return false
+            }
+        }
+    }
+    return true
+}
+
 class Type {
-    // static #null = new Type(() => false, "null")
     static #null = new Type(() => {throw new TypeError("can't set value on a type null")}, "null", null)
     static get null() { return Type.#null }
 
@@ -130,23 +169,20 @@ class Primitive extends Type {
     }
 
     static getFor(value) {
-        if (! Primitive.#known.has(value)) {
-            Primitive.#known.set(value, new Primitive(value))
+        if (! this.#known.has(value)) {
+            this.#known.set(value, new Primitive(value))
         }
-        return Primitive.#known.get(value)
+        return this.#known.get(value)
     }
 }
 
-// TODO rewrite using a static WeakMap to store metadata
-//      that way, OneOf instance could be reusable
 class OneOf extends Type {
+    static #known = new Map()
     #subTypes = []
-    #possibleTypes = []
 
     constructor(...types) {
         super()
-        this.#subTypes = [...(new Set(types.map(t => t instanceof OneOf ? t.#subTypes : type(t)).flat()))]
-        this.#possibleTypes = [...this.#subTypes]
+        this.#subTypes = [...types]
     }
 
     isValid(value) {
@@ -154,27 +190,26 @@ class OneOf extends Type {
     }
 
     isValidAt(index, value) {
-        return this.#possibleTypes.find(t => t.isValidAt(index, value))
+        return this.#subTypes.find(t => t.isValidAt(index, value))
     }
 
-    // todo return oneOf(...)
     subtypeAt(index) {
-        return this.#possibleTypes[0].subtypeAt(index)
+        return oneOf(...this.#subTypes.map(t => t.subtypeAt(index)))
     }
 
     initialize() {
-        throw new TypeError("Initialisation value for oneOf is not implemented");
+        return this.#subTypes[0].initialize()
     }
 
     editValue(value) {
         if (typeof value !== "object") {
             return value
         }
-        this.#possibleTypes = this.#subTypes.filter(t => t.isValid(value))
 
-        const that = this
+        const subTypes = this.#subTypes
         const proxyHandler = {
             set(obj, prop, value) {
+                let possibleTypes = subTypes.filter(t => t.isValid(value))
                 let newObject
                 if (Array.isArray(obj)) {
                     newObject = [...obj]
@@ -182,13 +217,13 @@ class OneOf extends Type {
                 } else {
                     newObject = {...obj, [prop]: value}
                 }
-                const compatibleTypes = that.#subTypes.filter(t => t.isValid(newObject))
+                const compatibleTypes = subTypes.filter(t => t.isValid(newObject))
                 if (compatibleTypes.length === 0) {
-                    console.error(`Can't set value of`, obj, `[${prop}] to`, value, `, incompatible with any of ${that.toString()}`)
+                    console.error(`Can't set value of`, obj, `[${prop}] to`, value, `, incompatible with any of ${subTypes.map(t => t.toString()).join(" | ")}`)
                     return false
                 }
-                that.#possibleTypes = compatibleTypes
-                const isSafe = ! that.#possibleTypes.some(t => {
+                possibleTypes = compatibleTypes
+                const isSafe = ! possibleTypes.some(t => {
                     const subt = t.subtypeAt(prop)
                     return subt instanceof ArrayOf ||
                         subt instanceof TupleOf ||
@@ -198,7 +233,7 @@ class OneOf extends Type {
                     obj[prop] = value
                     return true
                 }
-                console.error(`Ambiguous type for`, obj, `[${prop}], can be any of ${that.#possibleTypes.map(t => t.subtypeAt(prop).toString()).join(" | ")}, please be more specific`)
+                console.error(`Ambiguous type for`, obj, `[${prop}], can be any of ${possibleTypes.map(t => t.subtypeAt(prop).toString()).join(" | ")}, please be more specific`)
                 return false
             }
         }
@@ -210,16 +245,24 @@ class OneOf extends Type {
     }
 
     static getFor(...types) {
-        return new OneOf(...types)
+        types = new ComparableSet(types.map(t => t instanceof OneOf ? t.#subTypes : type(t)).flat())
+        for (const [key, value] of this.#known.entries()) {
+            if (types.equals(key)) {
+                return value
+            }
+        }
+        this.#known.set(types, new OneOf(...types))
+        return this.#known.get(types)
     }
 }
 
 class ArrayOf extends Type {
+    static #known = new Map()
     #type = Type.null
 
-    constructor(...types) {
+    constructor(type) {
         super()
-        this.#type = type(...types)
+        this.#type = type
     }
 
     isValid(value) {
@@ -259,11 +302,17 @@ class ArrayOf extends Type {
     }
 
     static getFor(...types) {
-        return new ArrayOf(...types)
+        const ty = type(...types)
+        if (! this.#known.has(ty)) {
+            this.#known.set(ty, new ArrayOf(ty))
+        }
+        return this.#known.get(ty)
     }
 }
 
 class TupleOf extends Type {
+    static #leaf = Symbol()
+    static #known = new Map()
     #types = []
 
     constructor(...types) {
@@ -314,11 +363,24 @@ class TupleOf extends Type {
     }
 
     static getFor(...types) {
-        return new TupleOf(...types)
+        let val = types.reduce((map, key) => map?.get(key), this.#known)
+        if (! val?.has(this.#leaf)) {
+            let map = this.#known
+            for (const ty of types) {
+                if (! map.has(ty)) {
+                    map.set(ty, new Map())
+                }
+                map = map.get(ty)
+            }
+            map.set(this.#leaf, new TupleOf(...types))
+            val = map
+        }
+        return val.get(this.#leaf)
     }
 }
 
 class RecordOf extends Type {
+    static #known = new Map()
     #types = {}
 
     constructor(types) {
@@ -391,19 +453,25 @@ class RecordOf extends Type {
         if (typeof shape !== "object" || Array.isArray(shape)) {
             throw new TypeError("Type RecordOf can only accept an object as argument")
         }
-        return new RecordOf(shape)
+
+        for (const [key, value] of this.#known.entries()) {
+            if (deepEqual(key, shape)) {
+                return value
+            }
+        }
+        const newRecordOf = new RecordOf(shape)
+        this.#known.set(shape, newRecordOf)
+        return newRecordOf
     }
 }
 
-// TODO rewrite using a static WeakMap for metadata to make instances reusable
-//      move isNull as part of WeakMap data
 class Nullable extends Type {
+    static #known = new Map()
     #type = Type.null
-    #isNull = false
 
     constructor(subtype) {
         super()
-        this.#type = type(subtype)
+        this.#type = subtype
     }
 
     isValid(value) {
@@ -411,15 +479,14 @@ class Nullable extends Type {
     }
 
     isValidAt(index, value) {
-        return ! this.#isNull && this.#type.isValidAt(index, value)
+        return this.#type.isValidAt(index, value)
     }
 
     subtypeAt(index) {
-        return this.#isNull ? undefined : this.#type.subtypeAt(index);
+        return this.#type.subtypeAt(index);
     }
 
     editValue(value) {
-        this.#isNull = value === undefined || value === null
         return value
     }
 
@@ -432,15 +499,16 @@ class Nullable extends Type {
     }
 
     static getFor(typeHint = null) {
-        return new Nullable(typeHint)
+        const ty = type(typeHint)
+        if (! this.#known.has(ty)) {
+            this.#known.set(ty, new Nullable(ty))
+        }
+        return this.#known.get(ty)
     }
 }
 
 class TypedFunction extends Type {
-    // #overloads = [
-    //     {params: [type(Number), type(Number)], return: type(Number)},
-    //     {params: [type(String, Number), type(String, Number)], return: type(String)}
-    // ]
+    static #known = new Map()
     #overloads
 
     constructor(...typeHints) {
@@ -459,6 +527,12 @@ class TypedFunction extends Type {
             return acc
         }, [{params: [], return: Type.null}])
     }
+    /*
+    constructor(overloads) {
+        super()
+        this.#overloads = overloads
+    }
+     */
 
     isValid(value) {
         return typeof value === "function"
@@ -485,7 +559,6 @@ class TypedFunction extends Type {
         }
     }
 
-    // todo edit to take only value
     editValue(value) {
         const overloads = this.#overloads
         return function(...args) {
@@ -507,19 +580,48 @@ class TypedFunction extends Type {
         }
     }
 
-    // todo use the other once OneOf.initialize is implemented
     initialize() {
-        return () => this.#overloads[0].return.initialize()
-        // return this.subtypeAt("return").initialize();
+        return this.subtypeAt("return").initialize();
     }
 
     toString() {
         return this.#overloads.map(overload => `(${overload.params.map(param => param.toString()).join(", ")}) => ${overload.return.toString()}`).join(" | ")
     }
 
+    static getKnown() {
+        return this.#known
+    }
+
     static getFor(...typeHints) {
         return new TypedFunction(...typeHints)
     }
+/*
+    TODO do
+    static getFor(...typeHints) {
+        const overloads = typeHints.reduce((acc, hint, index) => {
+            const currentOverload = acc.at(-1)
+            if (typeof hint === "function" && hint.prototype === undefined) {
+                currentOverload.return = type(hint())
+                if (index !== typeHints.length - 1) {
+                    acc.push({params: [], return: Type.null})
+                }
+            } else {
+                currentOverload.params.push(type(hint))
+            }
+            return acc
+        }, [{params: [], return: Type.null}])
+
+        for (const [key, value] of this.#known.entries()) {
+            console.log(key, overloads, deepEqual(key, overloads))
+            if (deepEqual(key, overloads)) {
+                return value
+            }
+        }
+        const newTypedFunction = new TypedFunction(overloads)
+        this.#known.set(overloads, newTypedFunction)
+        return newTypedFunction
+    }
+*/
 }
 
 function type(...typeHints) {
@@ -564,6 +666,35 @@ arr[3] = {a: 42}
 arr[1] = {a: 42}
 */
 /*
+console.log(
+    func({
+        b: {
+            c: {
+                d: type(42)
+            }
+        },
+        a: 1
+    }, Number, _=> null) ===
+    func({
+        b: {
+            c: {
+                d: type(42)
+            }
+        },
+        a: 1
+    }, Number, _=> null),
+    true
+)
+console.log(
+    func(String, Number, _=> null, Number, String, _=> String) ===
+    func(Number, String, _=> String, String, Number, _=> null), true
+)
+console.log(
+    func(String, Number, _=> null) === func(Number, String, _=> String), false
+)
+console.log(TypedFunction.getKnown())
+*/
+/*
 function myLog(string) {
     console.log(string, eval(string))
 }
@@ -589,7 +720,7 @@ myLog("type(arrayOf(type(Number, String))).isValid([12, '34'])")
 myLog("type() instanceof Type")
 */
 
-
+/*
 function typed(...typeHints) {
     return function (value, context) {
         if (context.kind === "accessor") {
@@ -649,4 +780,4 @@ console.log(A.sub.call({add(a, b) {return 42}}, 1, 2))
 // A.b[1][2] = "42"
 // A.b[2] = "42"
 // console.log(A.a, A.b)
-
+*/
