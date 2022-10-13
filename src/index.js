@@ -707,7 +707,7 @@ console.log("known function types", TypedFunction.getKnown())
 
 
 function myLog(string, expected) {
-    console.log(string, eval(string))
+    console.log(string, expected, eval(string))
 }
 
 myLog('type(Number).isValid("12")', false)
