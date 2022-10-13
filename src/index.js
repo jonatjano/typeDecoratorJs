@@ -676,6 +676,7 @@ arr[1] = {a: "42"}
 
 
 console.log(
+    "func({b: {c: {d: type(42)}},a: 1}, Number, _=> null) === func({b: {c: {d: type(42)}},a: 1}, Number, _=> null)",
     func({
         b: {
             c: {
@@ -695,40 +696,41 @@ console.log(
     true
 )
 console.log(
+    "func(String, Number, _=> null, Number, String, _=> String) === func(Number, String, _=> String, String, Number, _=> null)",
     func(String, Number, _=> null, Number, String, _=> String) ===
     func(Number, String, _=> String, String, Number, _=> null), true
 )
 console.log(
-    func(String, Number, _=> null) === func(Number, String, _=> null), false
+    "func(String, Number, _=> null) === func(Number, String, _=> null)", func(String, Number, _=> null) === func(Number, String, _=> null), false
 )
 console.log("known function types", TypedFunction.getKnown())
 
 
-function myLog(string) {
+function myLog(string, expected) {
     console.log(string, eval(string))
 }
 
-myLog('type(Number).isValid("12")')
-myLog("type(Number).isValid(12)")
-myLog("type(Number).isValid({})")
+myLog('type(Number).isValid("12")', false)
+myLog("type(Number).isValid(12)", true)
+myLog("type(Number).isValid({})", false)
 
-myLog('type(String).isValid("12")')
-myLog("type(String).isValid(12)")
-myLog("type(String).isValid({})")
+myLog('type(String).isValid("12")', true)
+myLog("type(String).isValid(12)", false)
+myLog("type(String).isValid({})", false)
 
-myLog('type(String, Number).isValid("12")')
-myLog("type(String, Number).isValid(12)")
-myLog("type(String, Number).isValid({})")
+myLog('type(String, Number).isValid("12")', true)
+myLog("type(String, Number).isValid(12)", true)
+myLog("type(String, Number).isValid({})", false)
 
-myLog("type(arrayOf(Number)).isValid([12, 34])")
-myLog("type(arrayOf(Number)).isValid([12, '34'])")
-myLog("type(arrayOf(Number, String)).isValid([12, '34'])")
-myLog("type(arrayOf(type(Number), type(String))).isValid([12, '34'])")
-myLog("type(arrayOf(type(Number, String))).isValid([12, '34'])")
+myLog("type(arrayOf(Number)).isValid([12, 34])", true)
+myLog("type(arrayOf(Number)).isValid([12, '34'])", false)
+myLog("type(arrayOf(Number, String)).isValid([12, '34'])", true)
+myLog("type(arrayOf(type(Number), type(String))).isValid([12, '34'])", true)
+myLog("type(arrayOf(type(Number, String))).isValid([12, '34'])", true)
 
-myLog("type() instanceof Type")
+myLog("type() instanceof Type", true)
 
-myLog("oneOf(Number, String) === oneOf(String, Number)")
+myLog("oneOf(Number, String) === oneOf(String, Number)", true)
 
 
 function typed(...typeHints) {
