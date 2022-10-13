@@ -195,11 +195,11 @@ class OneOf extends Type {
     }
 
     isValid(value) {
-        return this.#subTypes.find(t => t.isValid(value))
+        return this.#subTypes.find(t => t.isValid(value)) !== undefined
     }
 
     isValidAt(index, value) {
-        return this.#subTypes.find(t => t.isValidAt(index, value))
+        return this.#subTypes.find(t => t.isValidAt(index, value)) !== undefined
     }
 
     subtypeAt(index) {
