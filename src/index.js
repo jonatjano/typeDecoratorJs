@@ -80,12 +80,12 @@ class Type {
      * @type {string}
      */
     #name
-    #minimalValue
+    #initialValue
 
-    constructor(validationFunction = () => false, name = "", minimalValue = undefined) {
+    constructor(validationFunction = () => false, name = "", initialValue = undefined) {
         this.#validationFunction = validationFunction
         this.#name = name
-        this.#minimalValue = minimalValue
+        this.#initialValue = initialValue
     }
 
     isValid(value) {
@@ -105,7 +105,7 @@ class Type {
     }
 
     initialize() {
-        return this.#minimalValue
+        return this.#initialValue
     }
 
     toString() {
@@ -170,6 +170,13 @@ class Primitive extends Type {
         return this.#value;
     }
 
+    editValue(value) {
+        if (value !== this.#value) {
+            throw new TypeError(`Primitive type expected ${typeof this.#value === "string" ? `"${this.#value}"` : this.#value}, received ${typeof value === "string" ? `"${value}"` : value}`)
+        }
+        return this.#value
+    }
+
     toString() {
         if (typeof this.#value === "string") {
             return '"' + this.#value + '"'
@@ -211,11 +218,19 @@ class OneOf extends Type {
     }
 
     editValue(value) {
+        const subTypes = this.#subTypes
+
         if (typeof value !== "object") {
-            return value
+            let possibleTypes = subTypes.filter(t => t.isValid(value))
+            if (possibleTypes.length === 1) {
+                return possibleTypes[0].editValue(value)
+            } else if (possibleTypes.length > 1) {
+                throw new TypeError(`Ambiguous type, can be any of ${possibleTypes.map(t => t.toString()).join(" | ")}, please be more specific`);
+            } else {
+                throw new TypeError(`Can't set value to ${typeof value === "string" ? `"${value}"` : value}, incompatible with any of ${subTypes.map(t => t.toString()).join(" | ")}`)
+            }
         }
 
-        const subTypes = this.#subTypes
         const proxyHandler = {
             set(obj, prop, value) {
                 let possibleTypes = subTypes.filter(t => t.isValid(value))
@@ -395,7 +410,7 @@ class RecordOf extends Type {
     constructor(types) {
         super()
         this.#types = [...Object.getOwnPropertySymbols(types), ...Object.getOwnPropertyNames(types)]
-            .reduce((acc,key ) => {
+            .reduce((acc, key) => {
                 acc[key] = type(types[key])
                 return acc
             }, {})
@@ -664,39 +679,6 @@ arr[2] = {a: 42}
 arr[3] = {a: "lol"}
 arr[1] = {a: "42"}
 
-console.log(
-    "func({b: {c: {d: type(42)}},a: 1}, Number, _=> null) === func({b: {c: {d: type(42)}},a: 1}, Number, _=> null)",
-    func({
-        b: {
-            c: {
-                d: type(42)
-            }
-        },
-        a: 1
-    }, Number, _=> null) ===
-    func({
-        b: {
-            c: {
-                d: type(42)
-            }
-        },
-        a: 1
-    }, Number, _=> null),
-    true
-)
-console.log(
-    "func(String, Number, _=> null, Number, String, _=> String) === func(Number, String, _=> String, String, Number, _=> null)",
-    func(String, Number, _=> null, Number, String, _=> String) ===
-    func(Number, String, _=> String, String, Number, _=> null), true
-)
-console.log(
-    "func(String, Number, _=> null) === func(Number, String, _=> null)", func(String, Number, _=> null) === func(Number, String, _=> null), false
-)
-console.log("known function types", [...TypedFunction.getKnown().keys()].map(overloads => overloads.map(entry => {
-    entry.params = entry.params.map(par => par.toString()).join`, `
-    entry.return = entry.return.toString()
-    return entry
-})))
 
 function myLog(string, expected) {
     console.log(string, expected, eval(string))
@@ -728,6 +710,15 @@ myLog("func(Number, Number) === func(Number, Number)", true)
 myLog("func(Number, String) === func(Number, String)", true)
 myLog("func(Number, Number) === func(Number, Number, _=> null)", true)
 myLog("func(Number, Number, _=> Number, String, String, _=> String) === func(String, String, _=> String, Number, Number, _=> Number)", true)
+
+const digitsOnly = type(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+console.log(digitsOnly.editValue(5))
+console.log(digitsOnly.editValue(0))
+try {digitsOnly.editValue(-1);console.error("shouldn't be here")} catch (e) {}
+
+const one = type(1)
+one.editValue(1)
+try {one.editValue(!1);console.error("shouldn't be here")} catch (e) {}
 
 
 function typed(...typeHints) {
