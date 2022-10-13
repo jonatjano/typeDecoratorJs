@@ -51,19 +51,25 @@ class Type {
     static #undefined = new Type(() => true, "undefined", undefined)
     static get undefined() { return Type.#undefined }
 
+    static #number = new Type(value => typeof value === "number", "number", 0)
+    static get number() { return Type.#number }
+
+    static #string = new Type(value => typeof value === "string", "string", "")
+    static get string() { return Type.#string }
+
+    static #object = new Type(value => typeof value === "object" && !Array.isArray(value), "object", {})
+    static get object() { return Type.#object }
+
+    static #array = new Type(value => typeof value === "object" && Array.isArray(value), "array", [])
+    static get array() { return Type.#array }
+
     static #known = new Map([
         [null, Type.null],
         [undefined, Type.undefined],
-        [Number, new Type(value => typeof value === "number", "number", 0)],
-        [String, new Type(value => typeof value === "string", "string", "")],
-        [
-            Object,
-            new Type(value => typeof value === "object" && !Array.isArray(value), "object", {})
-        ],
-        [
-            Array,
-            new Type(value => typeof value === "object" && Array.isArray(value), "array", [])
-        ]
+        [Number, Type.number],
+        [String, Type.string],
+        [Object, Type.object],
+        [Array, Type.array]
     ])
 
     /**
@@ -165,7 +171,10 @@ class Primitive extends Type {
     }
 
     toString() {
-        return this.#value
+        if (typeof this.#value === "string") {
+            return '"' + this.#value + '"'
+        }
+        return this.#value.toString()
     }
 
     static getFor(value) {
@@ -650,7 +659,7 @@ function _null(typeHint) {
 function func(...typeHints) {
     return TypedFunction.getFor(...typeHints)
 }
-/*
+
 const myType = type({a: 42, b: _null(666)})
 const obj = myType.editValue({})
 
@@ -659,13 +668,13 @@ obj.a = 42
 console.log(myType.toString())
 console.log(obj)
 
-const arr = arrayOf({a: Number}).editValue([])
+const arr = arrayOf({a: oneOf(Number, "lol")}).editValue([])
 arr[0] = {a: 42}
 arr[2] = {a: 42}
-arr[3] = {a: 42}
-arr[1] = {a: 42}
-*/
-/*
+arr[3] = {a: "lol"}
+arr[1] = {a: "42"}
+
+
 console.log(
     func({
         b: {
@@ -690,11 +699,11 @@ console.log(
     func(Number, String, _=> String, String, Number, _=> null), true
 )
 console.log(
-    func(String, Number, _=> null) === func(Number, String, _=> String), false
+    func(String, Number, _=> null) === func(Number, String, _=> null), false
 )
-console.log(TypedFunction.getKnown())
-*/
-/*
+console.log("known function types", TypedFunction.getKnown())
+
+
 function myLog(string) {
     console.log(string, eval(string))
 }
@@ -718,9 +727,10 @@ myLog("type(arrayOf(type(Number), type(String))).isValid([12, '34'])")
 myLog("type(arrayOf(type(Number, String))).isValid([12, '34'])")
 
 myLog("type() instanceof Type")
-*/
 
-/*
+myLog("oneOf(Number, String) === oneOf(String, Number)")
+
+
 function typed(...typeHints) {
     return function (value, context) {
         if (context.kind === "accessor") {
@@ -773,6 +783,12 @@ class A {
 }
 
 console.log(A.add("1", "2"))
+console.log(A.add(1, 2))
+try {
+    console.log(A.add(1, "2"))
+} catch (e) {
+    console.error(e.toString())
+}
 console.log(A.sub(1, 2))
 console.log(A.sub.call({add(a, b) {return 42}}, 1, 2))
 // console.log(A)
@@ -780,4 +796,4 @@ console.log(A.sub.call({add(a, b) {return 42}}, 1, 2))
 // A.b[1][2] = "42"
 // A.b[2] = "42"
 // console.log(A.a, A.b)
-*/
+
