@@ -170,13 +170,6 @@ class Primitive extends Type {
         return this.#value;
     }
 
-    editValue(value) {
-        if (value !== this.#value) {
-            throw new TypeError(`Primitive type expected ${typeof this.#value === "string" ? `"${this.#value}"` : this.#value}, received ${typeof value === "string" ? `"${value}"` : value}`)
-        }
-        return this.#value
-    }
-
     toString() {
         if (typeof this.#value === "string") {
             return '"' + this.#value + '"'
