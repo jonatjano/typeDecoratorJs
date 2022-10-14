@@ -211,18 +211,11 @@ class OneOf extends Type {
     }
 
     editValue(value) {
-        const subTypes = this.#subTypes
-
         if (typeof value !== "object") {
-            let possibleTypes = subTypes.filter(t => t.isValid(value))
-            if (possibleTypes.length === 1) {
-                return possibleTypes[0].editValue(value)
-            } else if (possibleTypes.length > 1) {
-                throw new TypeError(`Ambiguous type, can be any of ${possibleTypes.map(t => t.toString()).join(" | ")}, please be more specific`);
-            } else {
-                throw new TypeError(`Can't set value to ${typeof value === "string" ? `"${value}"` : value}, incompatible with any of ${subTypes.map(t => t.toString()).join(" | ")}`)
-            }
+            return value
         }
+
+        const subTypes = this.#subTypes
 
         const proxyHandler = {
             set(obj, prop, value) {
