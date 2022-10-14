@@ -1,4 +1,4 @@
-class TypeError extends Error {
+export class TypeError extends Error {
     constructor(message) {
         super(message);
     }
@@ -633,7 +633,7 @@ class TypedFunction extends Type {
 */
 }
 
-function type(...typeHints) {
+export function type(...typeHints) {
     if (typeHints.length === 0) {
         typeHints = [null]
     } else if (typeHints.length !== 1) {
@@ -641,22 +641,22 @@ function type(...typeHints) {
     }
     return Type.getFor(typeHints[0])
 }
-function oneOf(...typeHints) {
+export function oneOf(...typeHints) {
     return type(...typeHints)
 }
-function arrayOf(...typeHints) {
+export function arrayOf(...typeHints) {
     return ArrayOf.getFor(...typeHints)
 }
-function tupleOf(...typesHints) {
+export function tupleOf(...typesHints) {
     return TupleOf.getFor(...typesHints)
 }
-function recordOf(shape) {
+export function recordOf(shape) {
     return RecordOf.getFor(shape)
 }
-function _null(typeHint) {
+export function _null(typeHint) {
     return Nullable.getFor(typeHint)
 }
-function func(...typeHints) {
+export function func(...typeHints) {
     return TypedFunction.getFor(...typeHints)
 }
 
@@ -672,8 +672,11 @@ const arr = arrayOf({a: oneOf(Number, "lol")}).editValue([])
 arr[0] = {a: 42}
 arr[2] = {a: 42}
 arr[3] = {a: "lol"}
-arr[1] = {a: "42"}
-
+try {
+    arr[1] = {a: "42"}
+} catch (e) {
+    console.log(e.toString())
+}
 
 console.log(
     "func({b: {c: {d: type(42)}},a: 1}, Number, _=> null) === func({b: {c: {d: type(42)}},a: 1}, Number, _=> null)",
@@ -733,7 +736,7 @@ myLog("type() instanceof Type", true)
 myLog("oneOf(Number, String) === oneOf(String, Number)", true)
 
 
-function typed(...typeHints) {
+export function typed(...typeHints) {
     return function (value, context) {
         if (context.kind === "accessor") {
             const ty = type(...typeHints)
@@ -793,9 +796,9 @@ try {
 }
 console.log(A.sub(1, 2))
 console.log(A.sub.call({add(a, b) {return 42}}, 1, 2))
-// console.log(A)
-// A.a = 42
-// A.b[1][2] = "42"
-// A.b[2] = "42"
-// console.log(A.a, A.b)
+console.log(A)
+A.a = 42
+A.b[1][2] = "42"
+A.b[2] = "42"
+console.log(A.a, A.b)
 

@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "npm run build && node lib/index.js",
-    "build": "babel src -d lib"
+    "test": "npm run build && node lib/*.spec.js",
+    "start": "npm run build && node lib/Type.js",
+    "build": "babel src test -d lib"
   },
   "author": "",
   "license": "ISC",
@@ -15,5 +15,6 @@
     "@babel/cli": "^7.17.10",
     "@babel/core": "^7.18.2",
     "@babel/plugin-proposal-decorators": "^7.18.2"
-  }
+  },
+  "type": "module"
 }
