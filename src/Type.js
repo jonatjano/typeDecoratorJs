@@ -104,12 +104,12 @@ class Type {
      * @type {string}
      */
     #name
-    #minimalValue
+    #initialValue
 
-    constructor(validationFunction = () => false, name = "", minimalValue = undefined) {
+    constructor(validationFunction = () => false, name = "", initialValue = undefined) {
         this.#validationFunction = validationFunction
         this.#name = name
-        this.#minimalValue = minimalValue
+        this.#initialValue = initialValue
     }
 
     isValid(value) {
@@ -129,7 +129,7 @@ class Type {
     }
 
     initialize() {
-        return this.#minimalValue
+        return this.#initialValue
     }
 
     toString() {
@@ -252,6 +252,7 @@ class OneOf extends Type {
         }
 
         const subTypes = this.#subTypes
+
         const proxyHandler = {
             set(obj, prop, value) {
                 let possibleTypes = subTypes.filter(t => t.isValid(value))
@@ -435,7 +436,7 @@ class RecordOf extends Type {
     constructor(types) {
         super()
         this.#types = [...Object.getOwnPropertySymbols(types), ...Object.getOwnPropertyNames(types)]
-            .reduce((acc,key ) => {
+            .reduce((acc, key) => {
                 acc[key] = type(types[key])
                 return acc
             }, {})
@@ -560,28 +561,11 @@ class TypedFunction extends Type {
     static #known = new Map()
     #overloads
 
-    constructor(...typeHints) {
-        super()
-
-        this.#overloads = typeHints.reduce((acc, hint, index) => {
-            const currentOverload = acc.at(-1)
-            if (typeof hint === "function" && hint.prototype === undefined) {
-                currentOverload.return = type(hint())
-                if (index !== typeHints.length - 1) {
-                    acc.push({params: [], return: Type.null})
-                }
-            } else {
-                currentOverload.params.push(type(hint))
-            }
-            return acc
-        }, [{params: [], return: Type.null}])
-    }
-    /*
     constructor(overloads) {
         super()
         this.#overloads = overloads
     }
-     */
+
 
     isValid(value) {
         return typeof value === "function"
@@ -630,7 +614,7 @@ class TypedFunction extends Type {
     }
 
     initialize() {
-        return this.subtypeAt("return").initialize();
+        return _ => this.subtypeAt("return").initialize();
     }
 
     toString() {
@@ -642,12 +626,8 @@ class TypedFunction extends Type {
     }
 
     static getFor(...typeHints) {
-        return new TypedFunction(...typeHints)
-    }
-/*
-    TODO do
-    static getFor(...typeHints) {
-        const overloads = typeHints.reduce((acc, hint, index) => {
+
+        let overloads = typeHints.reduce((acc, hint, index) => {
             const currentOverload = acc.at(-1)
             if (typeof hint === "function" && hint.prototype === undefined) {
                 currentOverload.return = type(hint())
@@ -660,17 +640,28 @@ class TypedFunction extends Type {
             return acc
         }, [{params: [], return: Type.null}])
 
-        for (const [key, value] of this.#known.entries()) {
-            console.log(key, overloads, deepEqual(key, overloads))
-            if (deepEqual(key, overloads)) {
-                return value
+        const knownOverloads = [...this.#known.keys()].find(key => {
+            if (key.length !== overloads.length) {
+                return false
             }
+            for (const over of overloads) {
+                const existInKey = key.find(keyOver => {
+                    return keyOver.return === over.return &&
+                        keyOver.params.reduce((acc, paramType, index) => acc && over.params[index] === paramType, true)
+                })
+                if (! existInKey) {
+                    return false
+                }
+            }
+            return true
+        })
+        if (! knownOverloads) {
+            const newTypedFunction = new TypedFunction(overloads)
+            this.#known.set(overloads, newTypedFunction)
+            return newTypedFunction
         }
-        const newTypedFunction = new TypedFunction(overloads)
-        this.#known.set(overloads, newTypedFunction)
-        return newTypedFunction
+        return this.#known.get(knownOverloads)
     }
-*/
 }
 
 export function type(...typeHints) {
@@ -718,37 +709,6 @@ try {
     console.log(e.toString())
 }
 
-console.log(
-    "func({b: {c: {d: type(42)}},a: 1}, Number, _=> null) === func({b: {c: {d: type(42)}},a: 1}, Number, _=> null)",
-    func({
-        b: {
-            c: {
-                d: type(42)
-            }
-        },
-        a: 1
-    }, Number, _=> null) ===
-    func({
-        b: {
-            c: {
-                d: type(42)
-            }
-        },
-        a: 1
-    }, Number, _=> null),
-    true
-)
-console.log(
-    "func(String, Number, _=> null, Number, String, _=> String) === func(Number, String, _=> String, String, Number, _=> null)",
-    func(String, Number, _=> null, Number, String, _=> String) ===
-    func(Number, String, _=> String, String, Number, _=> null), true
-)
-console.log(
-    "func(String, Number, _=> null) === func(Number, String, _=> null)", func(String, Number, _=> null) === func(Number, String, _=> null), false
-)
-console.log("known function types", TypedFunction.getKnown())
-
-
 function myLog(string, expected) {
     console.log(string, expected, eval(string))
 }
@@ -774,6 +734,20 @@ myLog("type(arrayOf(type(Number, String))).isValid([12, '34'])", true)
 myLog("type() instanceof Type", true)
 
 myLog("oneOf(Number, String) === oneOf(String, Number)", true)
+
+myLog("func(Number, Number) === func(Number, Number)", true)
+myLog("func(Number, String) === func(Number, String)", true)
+myLog("func(Number, Number) === func(Number, Number, _=> null)", true)
+myLog("func(Number, Number, _=> Number, String, String, _=> String) === func(String, String, _=> String, Number, Number, _=> Number)", true)
+
+const digitsOnly = type(0, 1, 2, 3, 4, 5, 6, 7, 8, 9)
+console.log(digitsOnly.editValue(5))
+console.log(digitsOnly.editValue(0))
+try {digitsOnly.editValue(-1);console.error("shouldn't be here")} catch (e) {}
+
+const one = type(1)
+one.editValue(1)
+try {one.editValue(!1);console.error("shouldn't be here")} catch (e) {}
 
 
 export function typed(...typeHints) {
