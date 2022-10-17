@@ -1,5 +1,5 @@
 # Type decorators
-Unless specified, in this document `typeHint` is either `null`, `undefined`, `Number`, `String`, `Object`, `Array`, an instance of `Type`, an object literal (`{}`) or an array literal (`[]`)
+Unless specified, in this document `typeHint` is either `null`, `undefined`, `Number`, `String`, `Object`, `Array`, `Symbol`, an instance of `Type`, an object literal (`{}`) or an array literal (`[]`)
 
 ## how to use
 (syntax will evolve as the decorator proposal evolve)

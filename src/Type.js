@@ -1,9 +1,18 @@
+/**
+ * specific error used by the type checker
+ */
 export class TypeError extends Error {
+    /**
+     * @typed(String, _=>TypeError)
+     */
     constructor(message) {
         super(message);
     }
 }
 
+/**
+ * like a native Set but with an equals Method
+ */
 class ComparableSet extends Set {
     equals(otherSet) {
         if (otherSet === this) {
@@ -24,6 +33,9 @@ class ComparableSet extends Set {
     }
 }
 
+/**
+ * deep equals 2 objects using strict equals
+ */
 function deepEqual(obj1, obj2) {
     if (obj1 === obj2) {
         return true
@@ -51,25 +63,37 @@ class Type {
     static #undefined = new Type(() => true, "undefined", undefined)
     static get undefined() { return Type.#undefined }
 
-    static #number = new Type(value => typeof value === "number", "number", 0)
+    static #boolean = new Type(value => value === true || value === false || value instanceof Boolean, "boolean", false)
+    static get boolean() { return Type.#boolean }
+
+    static #number = new Type(value => typeof value === "number" || value instanceof Number, "number", 0)
     static get number() { return Type.#number }
 
-    static #string = new Type(value => typeof value === "string", "string", "")
+    static #string = new Type(value => typeof value === "string" || value instanceof String, "string", "")
     static get string() { return Type.#string }
 
-    static #object = new Type(value => typeof value === "object" && !Array.isArray(value), "object", {})
+    static #object = new Type(value => typeof value === "object" && !Array.isArray(value) && value !== null, "object", {})
     static get object() { return Type.#object }
 
     static #array = new Type(value => typeof value === "object" && Array.isArray(value), "array", [])
     static get array() { return Type.#array }
 
+    static #symbol = new Type(value => typeof value === "symbol", "symbol", Symbol())
+    static get symbol() { return Type.#symbol }
+
+    static #function = new Type(value => typeof value === "function", "function", _=>_)
+    static get function() { return Type.#function }
+
     static #known = new Map([
         [null, Type.null],
         [undefined, Type.undefined],
+        [Boolean, Type.boolean],
         [Number, Type.number],
         [String, Type.string],
         [Object, Type.object],
-        [Array, Type.array]
+        [Array, Type.array],
+        [Symbol, Type.symbol],
+        [Function, Type.function]
     ])
 
     /**
@@ -121,32 +145,15 @@ class Type {
             if (Array.isArray(typeHint)) {
                 return TupleOf.getFor(...typeHint)
             } else {
-                return RecordOf.getFor(typeHint)
-            }
-        } else if (typeof typeHint === "function") {
-            /*
-            (class A).prototype !== undefined
-            {}.prototype === undefined
-            typeof (() => {}) === function
-             */
-            /*
-            function test(val) {
-                return {
-                    "instanceof Function": val instanceof Function,
-                    "prototype": val.prototype,
-                    "val": val,
-                    "arguments !== undefined": val.arguments !== undefined,
-                    "prototype === undefined": val.prototype === undefined
+                if (typeHint.__proto__?.constructor === Object) {
+                    return RecordOf.getFor(typeHint)
+                } else {
+                    return Instance.getFor(typeHint)
                 }
             }
-
-            console.table({
-                "class A {}": test(class A {}),
-                "function() {}": test(function() {}),
-                "() => {}": test(() => {}),
-                "Number": test(Number)
-            })
-             */
+        } else if (typeof typeHint === "function") {
+            this.#known.set(typeHint, new Type(value => value instanceof typeHint, typeHint.name))
+            return this.#known.get(typeHint)
         } else {
             return Primitive.getFor(typeHint)
         }
@@ -180,6 +187,35 @@ class Primitive extends Type {
     static getFor(value) {
         if (! this.#known.has(value)) {
             this.#known.set(value, new Primitive(value))
+        }
+        return this.#known.get(value)
+    }
+}
+
+class Instance extends Type {
+    static #known = new WeakMap()
+    #value
+
+    constructor(value) {
+        super()
+        this.#value = value
+    }
+
+    isValid(value) {
+        return this.#value === value
+    }
+
+    initialize() {
+        return this.#value;
+    }
+
+    toString() {
+        return this.#value.toString()
+    }
+
+    static getFor(value) {
+        if (! this.#known.has(value)) {
+            this.#known.set(value, new Instance(value))
         }
         return this.#known.get(value)
     }
@@ -255,6 +291,10 @@ class OneOf extends Type {
 
     static getFor(...types) {
         types = new ComparableSet(types.map(t => t instanceof OneOf ? t.#subTypes : type(t)).flat())
+        if (types.size === 1) {
+            return Type.getFor([...types][0])
+        }
+
         for (const [key, value] of this.#known.entries()) {
             if (types.equals(key)) {
                 return value
@@ -659,7 +699,7 @@ export function _null(typeHint) {
 export function func(...typeHints) {
     return TypedFunction.getFor(...typeHints)
 }
-
+/*
 const myType = type({a: 42, b: _null(666)})
 const obj = myType.editValue({})
 
@@ -802,3 +842,4 @@ A.b[1][2] = "42"
 A.b[2] = "42"
 console.log(A.a, A.b)
 
+*/
