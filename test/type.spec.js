@@ -1,6 +1,6 @@
 import {describe, it} from "mocha"
 import assert from "assert"
-import {type} from "../lib/Type.js";
+import {type, newBaseType, int} from "../lib/Type.js";
 
 describe("type()", () => {
 	class Class{}
@@ -275,6 +275,34 @@ describe("type()", () => {
 			assert.equal(testType.isValid(Symbol), true)
 			assert.equal(testType.isValid(Symbol()), false)
 		})
+	})
+})
+
+describe("newBaseType", () => {
+	it("int", () => {
+		assert.equal(int.isValid(0), true)
+		assert.equal(int.isValid(1), true)
+		assert.equal(int.isValid(42), true)
+		assert.equal(int.isValid(-0), true)
+		assert.equal(int.isValid(-1), true)
+		assert.equal(int.isValid(-42), true)
+		assert.equal(int.isValid(0.5), false)
+		assert.equal(int.isValid(15.000000001), false)
+		assert.equal(int.isValid(-0.5), false)
+		assert.equal(int.isValid(-15.000000001), false)
+	})
+
+	it("only string of length 1", () => {
+		const char = newBaseType(val => typeof val === "string" && val.length === 1, "char", "a")
+
+		assert.equal(char.isValid("a"), true)
+		assert.equal(char.isValid("1"), true)
+		assert.equal(char.isValid("é"), true)
+		assert.equal(char.isValid("\n"), true)
+		assert.equal(char.isValid(" "), true)
+		assert.equal(char.isValid(""), false)
+		assert.equal(char.isValid("ab"), false)
+		assert.equal(char.isValid("azergbfvd"), false)
 	})
 })
 /*
