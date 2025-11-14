@@ -1,6 +1,7 @@
 import {describe, it} from "mocha"
 import assert from "assert"
 import {type, newBaseType, int} from "../lib/Type.js";
+import {_null, typed} from "../src/Type.js";
 
 describe("type()", () => {
 	class Class{}
@@ -305,33 +306,63 @@ describe("newBaseType", () => {
 		assert.equal(char.isValid("azergbfvd"), false)
 	})
 })
-/*
-console.log("\n\n\n\ntests\n\n\n\n")
 
-// same instance for same type
-assert(type(String) === type(String))
-assert(type(Number) === type(Number))
-assert(type(String) !== type(Number))
+describe("use of the decorator", () => {
+	class A {
+		// @typed(String)
+		// static name = ""
 
-// can save a type into a variable
-const stringType = type(String)
-assert(stringType === type(String))
+		@typed(Boolean, _null(String), _=>_null(String))
+		static test(condition, message) {
+			return condition ? (message ?? "default") : null
+		}
+	}
 
-// calling type() with a type as only argument returns it directly
-assert(type(stringType) === stringType)
+	describe("on methods", () => {
+		it("throw with wrong arguments types", () => {
+			assert.throws(_ => {
+				A.test("true", "message")
+			})
+			assert.throws(_ => {
+				A.test(undefined, "message")
+			})
+			assert.throws(_ => {
+				A.test(true, true)
+			})
+			assert.throws(_ => {
+				A.test(true, 42)
+			})
+		})
+		it("throw with wrong arguments number", () => {
+			assert.throws(_ => {
+				A.test(true, "message", "extra")
+			})
+			// TODO : this should throws as the call is missing a required argument
+			// assert.throws(_ => {A.test()})
+		})
+		it("works with correct arguments", () => {
+			assert.equal(A.test(false, "message"), null)
+			assert.equal(A.test(false), null)
+			assert.equal(A.test(true, "message"), "message")
+			assert.equal(A.test(true), "default")
+		})
+	})
 
-// valid only accept correct values
-assert(stringType.isValid("dz"))
-assert(stringType.isValid(new String("dz")))
-assert(! stringType.isValid(42))
-assert(! stringType.isValid(new Number(42)))
-assert(! stringType.isValid(null))
-assert(! stringType.isValid(undefined))
-assert(! stringType.isValid({}))
-assert(! stringType.isValid([]))
-assert(! stringType.isValid(Symbol()))
+	// describe("on attributes", () => {
+	//     it("throw with wrong arguments types", () => {
+	//         assert.throws(_ => {
+	//             A.name = true
+	//         })
+	//         assert.throws(_ => {
+	//             A.name = 42
+	//         })
+	//         assert.throws(_ => {
+	//             A.name = undefined
+	//         })
+	//     })
+	//     it("works with correct arguments", () => {
+	//         assert.doesNotThrow(_ => {A.name = "message"})
+	//     })
+	// })
 
-
-
-assert(tupleOf(String, String, Number) === tupleOf(String, String, Number))
-*/
+})

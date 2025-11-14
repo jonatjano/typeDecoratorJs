@@ -696,3 +696,32 @@ export function newBaseType(validationFunction, name, initialValue) {
 
 export const int = newBaseType(val => typeof val === "number" && Math.round(val) === val, "int", 0)
 
+export function typed(...typeHints) {
+    return function (value, context) {
+        if (context.kind === "accessor") {
+            const ty = type(...typeHints)
+            return {
+                set(val) {
+                    if (ty.isValid(val)) {
+                        return value.set.call(this, ty.editValue(val))
+                    } else {
+                        console.error(`invalid value`, value, `of type ${typeof value}, expected ${ty.toString()}`)
+                    }
+                },
+                init(val) {
+                    if (val === undefined) {
+                        return ty.initialize()
+                    } else if (ty.isValid(val)) {
+                        return val
+                    }
+                    throw new TypeError(`Cannot initialize ${this}[${context.name}] to ${val}, expected type ${ty.toString()} got ${typeof val}`)
+                }
+            }
+        } else if (context.kind === "method") {
+            const ty = func(...typeHints)
+            return ty.editValue(value)
+        } else {
+            throw new SyntaxError(`kind "${context.kind}" is not supported by @typed decorator`)
+        }
+    }
+}

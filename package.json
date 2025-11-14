@@ -3,19 +3,20 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
-    "test": "npm run build && mocha",
+    "test": "npm run build-test && mocha lib-test",
     "start": "npm run build && node lib/Type.js",
-    "build": "babel src -d lib"
+    "build": "babel src -d lib",
+    "build-test": "babel test -d lib-test"
   },
   "author": "",
   "license": "ISC",
   "keywords": [],
   "description": "",
   "devDependencies": {
-    "@babel/cli": "^7.17.10",
-    "@babel/core": "^7.18.2",
-    "@babel/plugin-proposal-decorators": "^7.18.2",
-    "mocha": "^10.0.0"
+    "@babel/cli": "^7.28.3",
+    "@babel/core": "^7.28.5",
+    "@babel/plugin-proposal-decorators": "^7.28.0",
+    "mocha": "^11.7.5"
   },
   "type": "module"
 }
