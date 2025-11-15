@@ -14,6 +14,10 @@ export class TypeError extends Error {
  * like a native Set but with an equals Method
  */
 class ComparableSet extends Set {
+    /**
+     * @param {unknown} otherSet
+     * @return {boolean}
+     */
     equals(otherSet) {
         if (otherSet === this) {
             return true
@@ -56,34 +60,77 @@ function deepEqual(obj1, obj2) {
     return true
 }
 
+/**
+ * the base class for all types
+ */
 class Type {
+    /**
+     * the null type accepts nothing, the typescript equivalent is `never`
+     * @type {Type}
+     */
     static #null = new Type(() => {throw new TypeError("can't set value on a type null")}, "null", null)
     static get null() { return Type.#null }
 
+    /**
+     * the undefined type accepts everything, the typescript equivalent is `any` or `unknown`
+     * @type {Type}
+     */
     static #undefined = new Type(() => true, "undefined", undefined)
     static get undefined() { return Type.#undefined }
 
+    /**
+     * accepts any boolean
+     * @type {Type}
+     */
     static #boolean = new Type(value => value === true || value === false || value instanceof Boolean, "boolean", false)
     static get boolean() { return Type.#boolean }
 
+    /**
+     * accepts any number
+     * @type {Type}
+     */
     static #number = new Type(value => typeof value === "number" || value instanceof Number, "number", 0)
     static get number() { return Type.#number }
 
+    /**
+     * accepts any string
+     * @type {Type}
+     */
     static #string = new Type(value => typeof value === "string" || value instanceof String, "string", "")
     static get string() { return Type.#string }
 
+    /**
+     * accepts any object
+     * @type {Type}
+     */
     static #object = new Type(value => typeof value === "object" && !Array.isArray(value) && value !== null, "object", {})
     static get object() { return Type.#object }
 
+    /**
+     * accepts any array
+     * @type {Type}
+     */
     static #array = new Type(value => typeof value === "object" && Array.isArray(value), "array", [])
     static get array() { return Type.#array }
 
+    /**
+     * accepts any symbol
+     * @type {Type}
+     */
     static #symbol = new Type(value => typeof value === "symbol", "symbol", Symbol())
     static get symbol() { return Type.#symbol }
 
+    /**
+     * accepts any function
+     * @type {Type}
+     */
     static #function = new Type(value => typeof value === "function", "function", _=>_)
     static get function() { return Type.#function }
 
+    /**
+     * maps known primitive types to their corresponding Type instances
+     * @type {Map<unknown, Type>}
+     */
     static #known = new Map([
         [null, Type.null],
         [undefined, Type.undefined],
@@ -97,54 +144,104 @@ class Type {
     ])
 
     /**
-     * * => boolean
+     * the fonction that confirms a value is of the type
+     * @type {(value: any) => boolean}
      */
     #validationFunction
     /**
      * @type {string}
      */
     #name
+    /**
+     * the default value for the type
+     * @type {unknown}
+     */
     #initialValue
 
+    /**
+     * @param {(value: any) => boolean} validationFunction
+     * @param name
+     * @param initialValue
+     */
     constructor(validationFunction = () => false, name = "", initialValue = undefined) {
         this.#validationFunction = validationFunction
         this.#name = name
         this.#initialValue = initialValue
     }
 
+    /**
+     * check the validity of a value using the validation function
+     * @param {unknown} value
+     * @return {boolean}
+     */
     isValid(value) {
         return this.#validationFunction(value)
     }
 
+    /**
+     * check the validity of a value at a specific index in an array, tuple, or object
+     * @param {unknown} index
+     * @param {unknown} value
+     * @return {boolean}
+     */
     isValidAt(index, value) {
         return false
     }
 
+    /**
+     * return the type of value at a specific index in an array, tuple, or object
+     * @param {unknown} index
+     * @return {Type | unknown}
+     */
     subtypeAt(index) {
         return undefined
     }
 
+    /**
+     * modify the value to make it compatible with the type
+     * @param {unknown} value
+     * @return {any}
+     */
     editValue(value) {
         return value
     }
 
+    /**
+     * return the default value for the type
+     * @return {unknown}
+     */
     initialize() {
         return this.#initialValue
     }
 
+    /**
+     * return a string representation of the type
+     * @return {string}
+     */
     toString() {
         return this.#name
     }
 
+    /**
+     * return a Type instance corresponding to the given type hint
+     * @param {unknown} typeHint
+     * @return {Type}
+     */
     static getFor(typeHint) {
         if (typeHint instanceof Type) {
+            // if it is already a Type instance, return it as is
             return typeHint
         } else if (Type.#known.has(typeHint)) {
+            // if it is a known type, return the corresponding Type instance
             return Type.#known.get(typeHint)
         } else if (typeof typeHint === "object") {
+            // if it is an object, check if it is a tuple, a record or an instance
             if (Array.isArray(typeHint)) {
+                // if the type hint is an array, it corresponds to a tuple. Array types MUST use ArrayType.getFor
                 return TupleOf.getFor(...typeHint)
             } else {
+                // if the type hint is an object, it can be a record or an instance.
+                // we check its prototype to determine the type.
                 if (typeHint.__proto__?.constructor === Object) {
                     return RecordOf.getFor(typeHint)
                 } else {
@@ -152,16 +249,29 @@ class Type {
                 }
             }
         } else if (typeof typeHint === "function") {
+            // function
             this.#known.set(typeHint, new Type(value => value instanceof typeHint, typeHint.name))
             return this.#known.get(typeHint)
         } else {
+            // the only left are primitives
             return Primitive.getFor(typeHint)
         }
     }
 }
 
+/**
+ * A Type that represents a primitive value, such as a string, number, boolean, or null.
+ */
 class Primitive extends Type {
+    /**
+     * map of known instances of primitives allows returning the same instance for the same value
+     * @type {Map<unknown, Primitive>}
+     */
     static #known = new Map()
+    /**
+     * the value of the primitive type
+     * @type {unknown}
+     */
     #value
 
     constructor(value) {
@@ -169,14 +279,28 @@ class Primitive extends Type {
         this.#value = value
     }
 
+    /**
+     * primitive types validate only the value itself
+     * @param {unknown} value
+     * @return {boolean}
+     */
     isValid(value) {
         return this.#value === value
     }
 
+    /**
+     * since there is only one value for a primitive type, we initialize it to that value
+     * @return {any}
+     */
     initialize() {
         return this.#value;
     }
 
+    /**
+     * return a string representation of the primitive type
+     * strings are wrapped in quotes to make them easier to read
+     * @return {string}
+     */
     toString() {
         if (typeof this.#value === "string") {
             return '"' + this.#value + '"'
@@ -184,6 +308,12 @@ class Primitive extends Type {
         return this.#value.toString()
     }
 
+    /**
+     * return the corresponding Type instance for a given primitive value
+     * if one already exists for that value, it is returned, otherwise a new instance is created
+     * @param {unknown} value
+     * @return {Primitive}
+     */
     static getFor(value) {
         if (! this.#known.has(value)) {
             this.#known.set(value, new Primitive(value))
@@ -192,7 +322,14 @@ class Primitive extends Type {
     }
 }
 
+/**
+ * A Type that represents an instance of a class or object.
+ */
 class Instance extends Type {
+    /**
+     * using a memory map to clean Instance objects from memory when they are no longer referenced
+     * @type {WeakMap<unknown, Instance>}
+     */
     static #known = new WeakMap()
     #value
 
@@ -201,18 +338,36 @@ class Instance extends Type {
         this.#value = value
     }
 
+    /**
+     * since we validate the instance itself, we only need to check using equals
+     * @param {unknown} value
+     * @return {boolean}
+     */
     isValid(value) {
         return this.#value === value
     }
 
+    /**
+     * since we initialize the instance to itself, we don't need to do anything special
+     * @return {unknown}
+     */
     initialize() {
         return this.#value;
     }
 
+    /**
+     * return a string representation of the instance
+     * @return {string}
+     */
     toString() {
         return this.#value.toString()
     }
 
+    /**
+     * check for an existing instance in the memory map, or create a new one if none exists
+     * @param {unknown} value
+     * @return {Instance}
+     */
     static getFor(value) {
         if (! this.#known.has(value)) {
             this.#known.set(value, new Instance(value))
@@ -221,8 +376,18 @@ class Instance extends Type {
     }
 }
 
+/**
+ * A Type that represents a union of other types.
+ */
 class OneOf extends Type {
+    /**
+     * map of known OneOf types allows returning the same instance for the same set of subtypes
+     * @type {Map<ComparableSet<Type>, OneOf>}
+     */
     static #known = new Map()
+    /**
+     * @type {Type[]}
+     */
     #subTypes = []
 
     constructor(...types) {
@@ -230,22 +395,47 @@ class OneOf extends Type {
         this.#subTypes = [...types]
     }
 
+    /**
+     * isValid is implemented by checking if the value is valid for any of the subtypes
+     * @param {unknown} value
+     * @return {boolean}
+     */
     isValid(value) {
         return this.#subTypes.find(t => t.isValid(value)) !== undefined
     }
 
+    /**
+     * isValidAt is implemented by checking if the value is valid for the subtype at the specified index
+     * @param {unknown} index
+     * @param {unknown} value
+     * @return {boolean}
+     */
     isValidAt(index, value) {
         return this.#subTypes.find(t => t.isValidAt(index, value)) !== undefined
     }
 
+    /**
+     * return the set of possible subtypes at the specified index
+     * @param {unknown} index
+     * @return {OneOf}
+     */
     subtypeAt(index) {
         return oneOf(...this.#subTypes.map(t => t.subtypeAt(index)))
     }
 
+    /**
+     * initialize the value to the default value of the first subtype
+     * @return {unknown}
+     */
     initialize() {
         return this.#subTypes[0].initialize()
     }
 
+    /**
+     * modify the value to make it compatible with the type
+     * @param {unknown} value
+     * @return {unknown}
+     */
     editValue(value) {
         if (typeof value !== "object") {
             return value
@@ -263,6 +453,7 @@ class OneOf extends Type {
                 } else {
                     newObject = {...obj, [prop]: value}
                 }
+                // find the types compatible with the new value
                 const compatibleTypes = subTypes.filter(t => t.isValid(newObject))
                 if (compatibleTypes.length === 0) {
                     console.error(`Can't set value of`, obj, `[${prop}] to`, value, `, incompatible with any of ${subTypes.map(t => t.toString()).join(" | ")}`)
@@ -286,27 +477,46 @@ class OneOf extends Type {
         return new Proxy(value, proxyHandler)
     }
 
+    /**
+     * return a string representation of the type
+     * @return {string}
+     */
     toString() {
         return this.#subTypes.map(t => t.toString()).join(" | ")
     }
 
+    /**
+     *
+     * @param types
+     * @return {Type}
+     */
     static getFor(...types) {
+        // get the set of subtypes for the union
         types = new ComparableSet(types.map(t => t instanceof OneOf ? t.#subTypes : type(t)).flat())
+        // if the set of type size is one, then it's not a union, so we return the first type
         if (types.size === 1) {
             return Type.getFor([...types][0])
         }
 
+        // look for an existing OneOf instance with the same set of subtypes
         for (const [key, value] of this.#known.entries()) {
             if (types.equals(key)) {
                 return value
             }
         }
+        // if no existing instance is found, create a new one
         this.#known.set(types, new OneOf(...types))
         return this.#known.get(types)
     }
 }
 
+/**
+ * A Type that represents an array of a specific type.
+ */
 class ArrayOf extends Type {
+    /**
+     * @type {Map<unknown, ArrayOf>}
+     */
     static #known = new Map()
     #type = Type.null
 
@@ -315,22 +525,41 @@ class ArrayOf extends Type {
         this.#type = type
     }
 
+    /**
+     * @param {unknown[]} value
+     * @return {boolean}
+     */
     isValid(value) {
         return Array.isArray(value) && value.every((v) => this.#type.isValid(v))
     }
 
+    /**
+     * @param {unknown} index
+     * @param {unknown} value
+     * @return {boolean}
+     */
     isValidAt(index, value) {
         return this.#type.isValid(value)
     }
 
+    /**
+     * @param {unknown} index
+     * @return {Type}
+     */
     subtypeAt(index) {
         return this.#type;
     }
 
+    /**
+     * @param {unknown} value
+     * @return {unknown[]}
+     */
     editValue(value) {
         const that = this
+        // making a proxy allows checking the validity of the new value inside the array
         const proxyHandler = {
             set(obj, prop, value) {
+                // check the validity of the new value
                 if (that.#type.isValid(value)) {
                     obj[prop] = that.#type.editValue(value)
                     return true
@@ -360,8 +589,12 @@ class ArrayOf extends Type {
     }
 }
 
+/**
+ * A Type that represents a tuple of specific types.
+ */
 class TupleOf extends Type {
     static #leaf = Symbol()
+    /** @type {Map<unknown, TupleOf>} */
     static #known = new Map()
     #types = []
 
@@ -412,6 +645,11 @@ class TupleOf extends Type {
         return `Tuple[${this.#types.map(t => t.toString()).join(", ")}]`
     }
 
+    /**
+     *
+     * @param {unknown[]} types
+     * @return {TupleOf}
+     */
     static getFor(...types) {
         let val = types.reduce((map, key) => map?.get(key), this.#known)
         if (! val?.has(this.#leaf)) {
@@ -429,7 +667,11 @@ class TupleOf extends Type {
     }
 }
 
+/**
+ * A Type that represents a record of specific types.
+ */
 class RecordOf extends Type {
+    /** @type {Map<unknown, RecordOf>} */
     static #known = new Map()
     #types = {}
 
@@ -458,6 +700,11 @@ class RecordOf extends Type {
         return this.#types[index];
     }
 
+    /**
+     * add a proxy around the value to check the validity of inner values
+     * @param {unknown} value
+     * @return {Proxy<unknown>}
+     */
     editValue(value) {
         const that = this
         const proxyHandler = {
@@ -496,6 +743,12 @@ class RecordOf extends Type {
         } }`
     }
 
+    /**
+     *
+     * @param {Record<unknown, unknown>} shape
+     * @param {unknown[]} ignoredArgs
+     * @return {RecordOf}
+     */
     static getFor(shape, ...ignoredArgs) {
         if (ignoredArgs.length !== 0) {
             console.error(`RecordOf.getFor can only take one argument, others will be ignored`)
@@ -515,7 +768,11 @@ class RecordOf extends Type {
     }
 }
 
+/**
+ * A Type that represents a nullable value of a specific type.
+ */
 class Nullable extends Type {
+    /** @type {Map<unknown, Nullable>} */
     static #known = new Map()
     #type = Type.null
 
@@ -557,7 +814,11 @@ class Nullable extends Type {
     }
 }
 
+/**
+ * A Type that represents a function with a specific return type and parameters.
+ */
 class TypedFunction extends Type {
+    /** @type {Map<unknown, TypedFunction>} */
     static #known = new Map()
     #overloads
 
@@ -566,11 +827,21 @@ class TypedFunction extends Type {
         this.#overloads = overloads
     }
 
-
+    /**
+     * we can't check the validity of the function without executing it, so we just return true if it is a function
+     * @param {unknown} value
+     * @return {boolean}
+     */
     isValid(value) {
         return typeof value === "function"
     }
 
+    /**
+     *
+     * @param {unknown | "return"} index
+     * @param {unknown} value
+     * @return {boolean}
+     */
     isValidAt(index, value) {
         if (index === "return") {
             return this.#overloads.some(overload => overload.return.isValid(value))
@@ -578,6 +849,11 @@ class TypedFunction extends Type {
         return this.#overloads.some(overload => overload.params[index]?.isValid(value))
     }
 
+    /**
+     *
+     * @param {unknown | "return"} index
+     * @return {OneOf}
+     */
     subtypeAt(index) {
         if (this.#overloads.length === 1) {
             if (index === "return") {
@@ -592,6 +868,11 @@ class TypedFunction extends Type {
         }
     }
 
+    /**
+     *
+     * @param {unknown} value
+     * @return {Function}
+     */
     editValue(value) {
         const overloads = this.#overloads
         return function(...args) {
@@ -613,10 +894,18 @@ class TypedFunction extends Type {
         }
     }
 
+    /**
+     * initialize to a function that always returns the default value of the return type
+     * @return {function(): unknown}
+     */
     initialize() {
-        return _ => this.subtypeAt("return").initialize();
+        return () => this.subtypeAt("return").initialize();
     }
 
+    /**
+     * return a string representation of the type
+     * @return {string}
+     */
     toString() {
         return this.#overloads.map(overload => `(${overload.params.map(param => param.toString()).join(", ")}) => ${overload.return.toString()}`).join(" | ")
     }
@@ -625,8 +914,13 @@ class TypedFunction extends Type {
         return this.#known
     }
 
+    /**
+     * get a TypedFunction instance for the specified type hints
+     * @param {unknown[]} typeHints
+     * @return {TypedFunction}
+     */
     static getFor(...typeHints) {
-
+        // look for the function in the type hints to split the different overloads
         let overloads = typeHints.reduce((acc, hint, index) => {
             const currentOverload = acc.at(-1)
             if (typeof hint === "function" && hint.prototype === undefined) {
@@ -640,6 +934,7 @@ class TypedFunction extends Type {
             return acc
         }, [{params: [], return: Type.null}])
 
+        // looks for an existing TypedFunction instance with the same set of parameters and return type
         const knownOverloads = [...this.#known.keys()].find(key => {
             if (key.length !== overloads.length) {
                 return false
@@ -655,6 +950,7 @@ class TypedFunction extends Type {
             }
             return true
         })
+        // if no existing instance is found, create a new one
         if (! knownOverloads) {
             const newTypedFunction = new TypedFunction(overloads)
             this.#known.set(overloads, newTypedFunction)
@@ -664,6 +960,7 @@ class TypedFunction extends Type {
     }
 }
 
+// helper functions to make the API more readable
 export function type(...typeHints) {
     if (typeHints.length === 0) {
         typeHints = [null]
@@ -690,12 +987,20 @@ export function _null(typeHint) {
 export function func(...typeHints) {
     return TypedFunction.getFor(...typeHints)
 }
+
+// helper function to create a new Type constraint
 export function newBaseType(validationFunction, name, initialValue) {
     return new Type(validationFunction, name, initialValue)
 }
 
+// an example of a custom type constraint
 export const int = newBaseType(val => typeof val === "number" && Math.round(val) === val, "int", 0)
 
+/**
+ * the actual decorator function
+ * @param {unknown} typeHints
+ * @return {(function(unknown, *): ({set(*): (*|undefined), init(*): (*|undefined)}|undefined))|*}
+ */
 export function typed(...typeHints) {
     return function (value, context) {
         if (context.kind === "accessor") {

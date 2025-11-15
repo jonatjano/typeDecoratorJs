@@ -6,7 +6,7 @@
     "test": "npm run build-test && mocha lib-test",
     "start": "npm run build && node lib/Type.js",
     "build": "babel src -d lib",
-    "build-test": "babel test -d lib-test"
+    "build-test": "npm run build && babel test -d lib-test"
   },
   "author": "",
   "license": "ISC",
